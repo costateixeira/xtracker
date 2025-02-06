@@ -27,20 +27,18 @@ jobs:
           for repo in $(echo $SOURCE_REPOS | tr "," "\n"); do
             echo "Fetching issues from $repo"
           
-            # Fetch issues and print raw response for debugging
+            # Fetch issues
             issues=$(curl -s -H "Authorization: token $GH_PAT" \
                           -H "Accept: application/vnd.github.v3+json" \
                           "https://api.github.com/repos/$repo/issues?state=open")
 
-            # Debugging: Print first few characters of the response
-            echo "GitHub API response (truncated): $(echo "$issues" | cut -c1-500)"
-            
             # Ensure we have valid JSON before proceeding
             if echo "$issues" | jq empty 2>/dev/null; then
+              echo "✅ Valid JSON received. Processing issues..."
               echo "$issues" | jq -c '.[]' | while read -r issue; do
                 issue_number=$(echo "$issue" | jq -r '.number')
                 issue_title=$(echo "$issue" | jq -r '.title')
-                issue_body=$(echo "$issue" | jq -r '.body // "No description provided."')  # Handle null body safely
+                issue_body=$(echo "$issue" | jq -r '.body // "No description provided."')
                 issue_url=$(echo "$issue" | jq -r '.html_url')
 
                 echo "Processing issue #$issue_number: $issue_title"
@@ -57,22 +55,22 @@ jobs:
 
                 # Ensure existing_issue is a valid number
                 if [[ "$existing_issue" =~ ^[0-9]+$ ]] && [ "$existing_issue" -eq 0 ]; then
-                  echo "Creating issue: $issue_title"
+                  echo "🆕 Creating issue: $issue_title"
                   
                   create_response=$(curl -s -X POST -H "Authorization: token $GH_PAT" \
                                     -H "Accept: application/vnd.github.v3+json" \
                                     "https://api.github.com/repos/$AGGREGATION_REPO/issues" \
                                     -d "{\"title\": \"[Mirror] $issue_title\", \"body\": \"**Original Issue:** [$issue_url]($issue_url)\n\n$issue_body\"}")
 
-                  # Check if creation was successful
+                  # Check if issue creation was successful
                   if echo "$create_response" | jq -e '.id' >/dev/null; then
-                    echo "Issue created successfully!"
+                    echo "✅ Issue created successfully!"
                   else
-                    echo "Error creating issue: $create_response"
+                    echo "❌ Error creating issue: $(echo "$create_response" | jq -r '.message')"
                   fi
 
                 else
-                  echo "Issue already exists: $issue_title"
+                  echo "ℹ️ Issue already exists: $issue_title"
                 fi
               done
             else
