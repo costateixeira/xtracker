@@ -23,6 +23,17 @@ jobs:
           SOURCE_REPOS: "Xt-EHR/xt-ehr-metadata,Xt-EHR/xt-ehr-common,IHE/pharm-mpd"
         run: |
           echo "SOURCE_REPOS is: $SOURCE_REPOS"
+
+          # Check API Rate Limits
+          rate_limit=$(curl -s -H "Authorization: token $GH_PAT" \
+                            -H "Accept: application/vnd.github.v3+json" \
+                            "https://api.github.com/rate_limit" | jq -r '.rate.remaining')
+          echo "GitHub API Rate Limit Remaining: $rate_limit"
+
+          if [ "$rate_limit" -le 5 ]; then
+            echo "❌ API rate limit exceeded! Exiting."
+            exit 1
+          fi
           
           for repo in $(echo $SOURCE_REPOS | tr "," "\n"); do
             echo "Fetching issues from $repo"
@@ -32,7 +43,7 @@ jobs:
                           -H "Accept: application/vnd.github.v3+json" \
                           "https://api.github.com/repos/$repo/issues?state=open")
 
-            # Ensure we have valid JSON before proceeding
+            # Ensure valid JSON
             if echo "$issues" | jq empty 2>/dev/null; then
               echo "✅ Valid JSON received. Processing issues..."
               echo "$issues" | jq -c '.[]' | while read -r issue; do
@@ -43,7 +54,7 @@ jobs:
 
                 echo "Processing issue #$issue_number: $issue_title"
 
-                # Ensure issue_body is safely formatted
+                # Escape JSON properly
                 issue_body_sanitized=$(echo "$issue_body" | jq -Rs .)
 
                 # Check if issue already exists
